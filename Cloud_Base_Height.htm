@@ -1,0 +1,752 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"
+"http://www.w3.org/TR/REC-html40/loose.dtd">
+<html><head><title>OPeNDAP Dataset Query Form</title>
+<link type="text/css" rel="stylesheet" media="screen" href="/thredds/tdsDap.css"/>
+<base href="http://www.opendap.org/online_help_files/">
+<script type="text/javascript">
+<!--
+
+
+// -*- Java -*-
+
+// $Id: jscriptCore.java 15901 2007-02-28 23:57:28Z jimg $
+
+// (c) COPYRIGHT URI/MIT 1999
+// Please read the full copyright statement in the file COPYRIGHT.
+//
+// Authors:
+//	jhrg,jimg	James Gallagher (jgallagher@gso.url.edu)
+
+var reflection_cgi = "http://unidata.ucar.edu/cgi-bin/dods/posturl.pl";
+
+// Event handlers for the disposition button.
+
+// The ascii_button handler sends data to a new window. The user can then 
+// save the data to a file.
+
+function ascii_button() {
+    var url = new String(document.forms[0].url.value);
+
+    var url_parts = url.split("?");
+    /* handle case where constraint is null. */
+    if (url_parts[1] != null) {
+        var ascii_url = url_parts[0] + ".ascii?" + url_parts[1];
+    }
+    else {
+        var ascii_url = url_parts[0] + ".ascii?";
+    }
+
+    window.open(ascii_url, "ASCII_Data");
+}
+
+/* The binary_button handler loads the data to the current window. Since it 
+   is binary, Netscape will ask the user for a filename and save the data
+   to that file. */
+
+function binary_button() {
+    var url = new String(document.forms[0].url.value);
+
+    var url_parts = url.split("?");
+    /* handle case where constraint is null. */
+    if (url_parts[1] != null) {
+        var binary_url = url_parts[0] + ".dods?" + url_parts[1];
+    }
+    else {
+        var binary_url = url_parts[0] + ".dods?";
+    }
+
+    window.location = binary_url;
+}
+
+/* Route the URL to Matlab, IDL, .... Users must add an entry into their mime
+   types file (aka list of Netscape helper applications) so that the URL will
+   be fedd into Matlab which must, in addition, be running loadopendap.
+
+   Note that reflection_cgi is a global JavaScript variable set at the 
+   begining of this `file'. */
+
+function program_button() {
+    var program_url = new String(document.forms[0].url.value);
+
+    /* Build a call to the reflector CGI. */
+    var CGI = reflection_cgi + "?" + "url=" + program_url + "&disposition=matlab";
+
+    window.location = CGI;
+}
+
+var help = 0;			// Our friend, the help window.
+
+function help_button() {
+    // Check the global to keep from opening the window again if it is
+    // already visible. I think Netscape handles this but I know it will
+    // write the contents over and over again. This preents that, too.
+    // 10/8/99 jhrg
+    if (help && !help.closed)
+	return;
+
+    // Resize on Netscape 4 is hosed. When enabled, if a user resizes then
+    // the root window's document gets reloaded. This does not happen on IE5.
+    // regardless, with scrollbars we don't absolutely need to be able to
+    // resize. 10/8/99 jhrg
+    help = window.open("", "help", "scrollbars,dependent,width=600,height=400");
+    write_help_contents(help);
+}
+
+function write_help_contents() {
+    help.document.writeln("<html><head><title> " +
+"Help for the DODS Dataset Access Form</title></head><body><form> " +
+"<center><h2>Help for the DODS Dataset Access Form</h2></center> " +
+"This form displays information from the dataset whose URL is shown in " +
+"the <em>DataURL</em> field. Each variable in this dataset is shown " +
+"below in the section labeled <em>Variables</em>. " +
+"<ul>" +
+"<li>To select a variable click on the checkbox to its left. " +
+"<li>To constrain a variable that you've selected, edit the information " +
+"that appears in the text boxes below the variable. " +
+"<li>To get ASCII or binary values for the variables you've selected, " +
+"click on the <em>Get ASCII</em> or <em>Get Binary</em> buttons. " +
+//  "<li>To use the <em>Send to Program</em> feature you must install a web " +
+//  "helper application that can route the DODS URL built by this form to a " +
+//  "client. Look on the <a " +
+//  "href=\"http://unidata.ucar.edu/packages/dods/\" target=\"DODS\"> " +
+//  "DODS home page (http://unidata.ucar.edu/packages/dods/)</a> " +
+//  "for a suitable client. " +
+//  "</ul>" +
+"Note that the URL displayed in the <em>DataURL</em> field is updated " +
+"as you select and/or constrain variables. The URL in this field can be " +
+"cut and pasted in various DODS clients such as the Matlab and IDL " +
+"command extensions. See the <a " +
+"href=\"http://www.unidata.ucar.edu/packages/dods/\" target=\"DODS\"> " +
+"DODS home page</a> for " +
+"information about those clients. " +
+"<p><hr><p> " + 
+"<center> " +
+"<input type=\"button\" value=\"Close\" onclick=\"self.close()\"> " +
+"</center></form></body></html>");
+}
+
+function open_dods_home() {
+    window.open("http://unidata.ucar.edu/packages/dods/", "DODS_HOME_PAGE");
+}
+
+
+// Helper functions for the form.
+
+function describe_index() {
+   defaultStatus = "Enter start, stride and stop for the array dimension.";
+}
+
+function describe_selection() {
+   defaultStatus = "Enter a relational expression (e.g., <20).";
+}
+
+function describe_operator() {
+   defaultStatus = "Choose a relational operator. Use - to enter a function name).";
+}
+
+function describe_projection() {
+   defaultStatus = "Add this variable to the projection.";
+}
+
+///////////////////////////////////////////////////////////
+// The dods_url object.
+///////////////////////////////////////////////////////////
+
+// CTOR for dods_url
+// Create the DODS URL object.
+function dods_url(base_url) {
+    this.url = base_url;
+    this.projection = "";
+    this.selection = "";
+    this.num_dods_vars = 0;
+    this.dods_vars = new Array();
+        
+    this.build_constraint = build_constraint;
+    this.add_dods_var = add_dods_var;
+    this.update_url = update_url;
+}
+
+// Method of dods_url
+// Add the projection and selection to the displayed URL.
+function update_url() {
+    this.build_constraint();
+    var url_text = this.url;
+    // Only add the projection & selection (and ?) if there really are
+    // constraints! 
+    if (this.projection.length + this.selection.length > 0)
+        url_text += "?" + this.projection + this.selection;
+    document.forms[0].url.value = url_text;
+}
+
+// Method of dods_url
+// Scan all the form elements and pick out the various pieces of constraint
+// information. Add these to the dods_url instance.
+function build_constraint() {
+    var p = "";
+    var s = "";
+    for (var i = 0; i < this.num_dods_vars; ++i) {
+        if (this.dods_vars[i].is_projected == 1) {
+	    // The comma is a clause separator.
+	    if (p.length > 0)
+	        p += ",";
+            p += this.dods_vars[i].get_projection();
+	}
+	var temp_s = this.dods_vars[i].get_selection();
+	if (temp_s.length > 0)
+	    s += "&" + temp_s;    // The ampersand is a prefix to the clause.
+    }
+
+    this.projection = p;
+    this.selection = s;
+}
+
+// Method of dods_url
+// Add the variable to the dods_var array of dods_vars. The var_index is the
+// number of *this particular* variable in the dataset, zero-based.
+function add_dods_var(dods_var) {
+    this.dods_vars[this.num_dods_vars] = dods_var;
+    this.num_dods_vars++;
+}
+
+/////////////////////////////////////////////////////////////////
+// dods_var
+/////////////////////////////////////////////////////////////////
+
+// CTOR for dods_var
+// name: the name of the variable from DODS' perspective.
+// js_var_name: the name of the variable within the form.
+// is_array: 1 if this is an array, 0 otherwise.
+function dods_var(name, js_var_name, is_array) {
+    // Common members
+    this.name = name;
+    this.js_var_name = js_var_name;
+    this.is_projected = 0;
+    if (is_array > 0) {
+        this.is_array = 1;
+        this.num_dims = 0;        // Holds the number of dimensions
+        this.dims = new Array(); // Holds the length of the dimensions
+
+        this.add_dim = add_dim;
+        this.display_indices = display_indices;
+        this.erase_indices = erase_indices;
+    }
+    else
+        this.is_array = 0;
+
+    this.handle_projection_change = handle_projection_change;
+    this.get_projection = get_projection;
+    this.get_selection = get_selection;
+}
+
+// Method of dods_var
+// Add a dimension to a DODS Array object.
+function add_dim(dim_size) {
+    this.dims[this.num_dims] = dim_size;
+    this.num_dims++;
+}
+
+// Method of dods_var
+// Add the array indices to the text widgets associated with this DODS
+// array object. The text widgets are names <var_name>_0, <var_name>_1, ...
+// <var_name>_n for an array with size N+1.
+function display_indices() {
+    for (var i = 0; i < this.num_dims; ++i) {
+        var end_index = this.dims[i]-1;
+        var s = "0:1:" + end_index.toString();
+	var text_widget = "document.forms[0]." + this.js_var_name + "_" + i.toString();
+	eval(text_widget).value = s;
+    }
+}
+
+// Method of dods_var
+// Use this to remove index information from a DODS array object.
+function erase_indices() {
+    for (var i = 0; i < this.num_dims; ++i) {
+	var text_widget = "document.forms[0]." + this.js_var_name + "_" + i.toString();
+	eval(text_widget).value = "";
+    }
+}
+
+// Method of  dods_var
+function handle_projection_change(check_box) {
+    if (check_box.checked) {
+        this.is_projected = 1;
+	if (this.is_array == 1)
+	    this.display_indices();
+    }
+    else {
+        this.is_projected = 0;
+	if (this.is_array == 1)
+	    this.erase_indices();
+    }
+
+    DODS_URL.update_url();
+}
+
+
+// Method of dods_var
+// Get the projection sub-expression for this variable.
+function get_projection() {
+    var p = "";
+    if (this.is_array == 1) {
+        p = this.name;		// ***
+        for (var i = 0; i < this.num_dims; ++i) {
+	    var text_widget = "document.forms[0]." + this.js_var_name + "_" + i.toString();
+	    p += "[" + eval(text_widget).value + "]";
+	}
+    }
+    else {
+	p = this.name;		// ***
+    }
+
+    return p;
+}
+
+// Method of dods_var
+// Get the selection (which is null for arrays).
+function get_selection() {
+    var s = "";
+    if (this.is_array == 1) {
+        return s;
+    }
+    else {
+	var text_widget = "document.forms[0]." + this.js_var_name + "_selection";
+        if (eval(text_widget).value != "") {
+            var oper_widget_name = "document.forms[0]." + this.js_var_name + "_operator";
+            var oper_widget = eval(oper_widget_name);
+	    var operator = oper_widget.options[oper_widget.selectedIndex].value;
+            // If the operator is `-' then don't prepend the variable name!
+            // This provides a way for users to enter function names as
+            // selection clauses. 
+            if (operator == "-")
+                s = eval(text_widget).value;
+            else
+	        s = this.name + operator + eval(text_widget).value; // ***
+        }
+    }
+
+    return s;
+}    
+
+// : jscriptCore.tmpl,v $
+// Revision 1.4  2001/09/17 23:05:53  ndp
+// *** empty log message ***
+//
+// Revision 1.1.2.3  2001/09/10 21:48:07  jimg
+// Removed the `Send to Program' button and its help text.
+//
+// Revision 1.1.2.2  2001/09/10 19:32:28  jimg
+// Fixed two problems: 1) Variable names in the JavaScript code sometimes
+// contained spaces since they were made using the dataset's variable name.
+// The names are now filtered through id2www and esc2underscore. 2) The CE
+// sometimes contained spaces, again, because dataset variable names were
+// used to build the CE. I filtered the names with id2www_ce before passing
+// them to the JavaScript code.
+//
+// Revision 1.1.2.1  2001/01/26 04:01:13  jimg
+// Added
+//
+// Revision 1.5  2000/11/09 21:04:37  jimg
+// Merged changes from release-3-1. There was a goof and a bunch of the
+// changes never made it to the branch. I merged the entire branch.
+// There maybe problems still...
+//
+// Revision 1.4  2000/10/03 20:07:21  jimg
+// Moved Logs to the end of each file.
+//
+// Revision 1.3  1999/05/18 20:08:18  jimg
+// Fixed massive problems introduced by the String to string changes.
+//
+// Revision 1.2  2000/11/09 21:04:37  jimg
+// Merged changes from release-3-1. There was a goof and a bunch of the
+// changes never made it to the branch. I merged the entire branch.
+// There maybe problems still...
+//
+// Revision 1.1.2.3  1999/10/13 17:02:55  jimg
+// Changed location of posturl.pl.
+//
+// Revision 1.1.2.2  1999/10/11 17:57:32  jimg
+// Fixed a bug which showed up in IE 5. Objects in IE 5 cannot use eval() to
+// name a field and access a property of that field in the same statement.
+// Instead, the use of eval to name a field and the access to that (new)
+// field must be broken up. I think this is the case because IE 5's parser
+// thinks `eval' is, in this situation, an object property. Of course,
+// there's no eval property per se, so script execution halts. See the use of
+// the document.forms[0].<text_widget> stuff in the method display_indices().
+//
+// Revision 1.1.2.1  1999/10/09 00:30:36  jimg
+// Created.
+
+DODS_URL = new dods_url("http://pstds11-zvopaph1:8080/thredds/dodsC/aggregation/ukvx_standard_v1_short_2018-02-16_0900/cloud_base_height_4p5_oktas_879f4cd5-feef-4d67-a789-0af440c631e7.ncml");
+// -->
+</script>
+</head>
+<body>
+<p><h2 align='center'>OPeNDAP Dataset Access Form</h2>
+<hr>
+<form action="">
+<table>
+
+<tr><td align="right">
+<h3><a href="opendap_form_help.html#disposition" valign="bottom">Action:</a></h3>
+<td><input type="button" value="Get ASCII" onclick="ascii_button()">
+<input type="button" value="Get Binary" onclick="binary_button()">
+<input type="button" value="Show Help" onclick="help_button()">
+<tr>
+<td align="right">
+<h3><a href="opendap_form_help.html#data_url" valign="bottom">Data URL:</a></h3><td><input name="url" type="text" size=70 value="http://pstds11-zvopaph1:8080/thredds/dodsC/aggregation/ukvx_standard_v1_short_2018-02-16_0900/cloud_base_height_4p5_oktas_879f4cd5-feef-4d67-a789-0af440c631e7.ncml">
+<tr><td><td><hr>
+
+<tr>
+<td align="right" valign="top">
+<h3><a href="opendap_form_help.html#global_attr">Global Attributes:</a></h3>
+<td><textarea name="global_attr" rows=5 cols=70>
+title: Operational UKV Model Forecast
+um_version: 10.6
+Conventions: CF-1.5, UKMO-1.0
+institution: Met Office
+source: Met Office Unified Model
+history: 2018-02-16T10:05:47: StaGE Decoupler
+grid_id: ukvx_standard_v1_short
+_NCProperties: version=1|netcdflibversion=4.4.1|hdf5libversion=1.8.17
+</textarea><p>
+
+<tr><td><td><hr>
+
+<tr>
+<td align="right" valign="top">
+<h3><a href="opendap_form_help.html#dataset_variables">Variables:</a></h3>
+<br><td>
+<script type="text/javascript">
+<!--
+dods_lambert_azimuthal_equal_area = new dods_var("lambert_azimuthal_equal_area", "dods_lambert_azimuthal_equal_area", 0);
+DODS_URL.add_dods_var(dods_lambert_azimuthal_equal_area);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_lambert_azimuthal_equal_area"
+onclick="dods_lambert_azimuthal_equal_area.handle_projection_change(get_dods_lambert_azimuthal_equal_area)">
+<font size="+1">lambert_azimuthal_equal_area</font>: 32 bit Integer</b><br>
+
+lambert_azimuthal_equal_area <select name="dods_lambert_azimuthal_equal_area_operator" onfocus="describe_operator()" onchange="DODS_URL.update_url()">
+<option value="=" selected>=
+<option value="!=">!=
+<option value="<"><
+<option value="<="><=
+<option value=">">>
+<option value=">=">>=
+<option value="-">--
+</select>
+<input type="text" name="dods_lambert_azimuthal_equal_area_selection" size=12 onFocus="describe_selection()" onChange="DODS_URL.update_url()">
+<br>
+
+<textarea name="lambert_azimuthal_equal_area_attr" rows=5 cols=70>
+grid_mapping_name: lambert_azimuthal_equal_area
+longitude_of_prime_meridian: 0.0
+semi_major_axis: 6378137.0
+semi_minor_axis: 6356752.314140356
+longitude_of_projection_origin: -2.5
+latitude_of_projection_origin: 54.9
+false_easting: 0.0
+false_northing: 0.0
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_projection_y_coordinate = new dods_var("projection_y_coordinate", "dods_projection_y_coordinate", 1);
+DODS_URL.add_dods_var(dods_projection_y_coordinate);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_projection_y_coordinate"
+onclick="dods_projection_y_coordinate.handle_projection_change(get_dods_projection_y_coordinate)">
+<font size="+1">projection_y_coordinate</font>: Array of 32 bit Reals [projection_y_coordinate = 0..969]
+</b><br>
+
+projection_y_coordinate:<input type="text" name="dods_projection_y_coordinate_0" size=8 onfocus="describe_index()" onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_projection_y_coordinate.add_dim(970);
+// -->
+</script>
+<br>
+
+<textarea name="projection_y_coordinate_attr" rows=5 cols=70>
+standard_name: projection_y_coordinate
+axis: Y
+bounds: projection_y_coordinate_bnds
+units: m
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_projection_y_coordinate_bnds = new dods_var("projection_y_coordinate_bnds", "dods_projection_y_coordinate_bnds", 1);
+DODS_URL.add_dods_var(dods_projection_y_coordinate_bnds);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_projection_y_coordinate_bnds"
+onclick="dods_projection_y_coordinate_bnds.handle_projection_change(get_dods_projection_y_coordinate_bnds)">
+<font size="+1">projection_y_coordinate_bnds</font>: Array of 32 bit Reals [projection_y_coordinate = 0..969][bnds = 0..1]
+</b><br>
+
+projection_y_coordinate:<input type="text" name="dods_projection_y_coordinate_bnds_0" size=8 onfocus="describe_index()" onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_projection_y_coordinate_bnds.add_dim(970);
+// -->
+</script>
+bnds:<input type="text" name="dods_projection_y_coordinate_bnds_1" size=8 onfocus="describe_index()" onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_projection_y_coordinate_bnds.add_dim(2);
+// -->
+</script>
+<br>
+
+<textarea name="projection_y_coordinate_bnds_attr" rows=5 cols=70>
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_projection_x_coordinate = new dods_var("projection_x_coordinate", "dods_projection_x_coordinate", 1);
+DODS_URL.add_dods_var(dods_projection_x_coordinate);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_projection_x_coordinate"
+onclick="dods_projection_x_coordinate.handle_projection_change(get_dods_projection_x_coordinate)">
+<font size="+1">projection_x_coordinate</font>: Array of 32 bit Reals [projection_x_coordinate = 0..1041]
+</b><br>
+
+projection_x_coordinate:<input type="text" name="dods_projection_x_coordinate_0" size=8 onfocus="describe_index()" onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_projection_x_coordinate.add_dim(1042);
+// -->
+</script>
+<br>
+
+<textarea name="projection_x_coordinate_attr" rows=5 cols=70>
+bounds: projection_x_coordinate_bnds
+units: m
+standard_name: projection_x_coordinate
+axis: X
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_projection_x_coordinate_bnds = new dods_var("projection_x_coordinate_bnds", "dods_projection_x_coordinate_bnds", 1);
+DODS_URL.add_dods_var(dods_projection_x_coordinate_bnds);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_projection_x_coordinate_bnds"
+onclick="dods_projection_x_coordinate_bnds.handle_projection_change(get_dods_projection_x_coordinate_bnds)">
+<font size="+1">projection_x_coordinate_bnds</font>: Array of 32 bit Reals [projection_x_coordinate = 0..1041][bnds = 0..1]
+</b><br>
+
+projection_x_coordinate:<input type="text" name="dods_projection_x_coordinate_bnds_0" size=8 onfocus="describe_index()" onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_projection_x_coordinate_bnds.add_dim(1042);
+// -->
+</script>
+bnds:<input type="text" name="dods_projection_x_coordinate_bnds_1" size=8 onfocus="describe_index()" onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_projection_x_coordinate_bnds.add_dim(2);
+// -->
+</script>
+<br>
+
+<textarea name="projection_x_coordinate_bnds_attr" rows=5 cols=70>
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_forecast_reference_time = new dods_var("forecast_reference_time", "dods_forecast_reference_time", 0);
+DODS_URL.add_dods_var(dods_forecast_reference_time);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_forecast_reference_time"
+onclick="dods_forecast_reference_time.handle_projection_change(get_dods_forecast_reference_time)">
+<font size="+1">forecast_reference_time</font>: 32 bit Integer</b><br>
+
+forecast_reference_time <select name="dods_forecast_reference_time_operator" onfocus="describe_operator()" onchange="DODS_URL.update_url()">
+<option value="=" selected>=
+<option value="!=">!=
+<option value="<"><
+<option value="<="><=
+<option value=">">>
+<option value=">=">>=
+<option value="-">--
+</select>
+<input type="text" name="dods_forecast_reference_time_selection" size=12 onFocus="describe_selection()" onChange="DODS_URL.update_url()">
+<br>
+
+<textarea name="forecast_reference_time_attr" rows=5 cols=70>
+units: seconds since 1970-01-01 00:00:00
+standard_name: forecast_reference_time
+calendar: gregorian
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_cloud_base_height_4p5_oktas = new dods_var("cloud_base_height_4p5_oktas", "dods_cloud_base_height_4p5_oktas", 1);
+DODS_URL.add_dods_var(dods_cloud_base_height_4p5_oktas);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_cloud_base_height_4p5_oktas"
+onclick="dods_cloud_base_height_4p5_oktas.handle_projection_change(get_dods_cloud_base_height_4p5_oktas)">
+<font size="+1">cloud_base_height_4p5_oktas</font>: Grid</b><br>
+
+time:<input type="text" name="dods_cloud_base_height_4p5_oktas_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_cloud_base_height_4p5_oktas.add_dim(1);
+// -->
+</script>
+projection_y_coordinate:<input type="text" name="dods_cloud_base_height_4p5_oktas_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_cloud_base_height_4p5_oktas.add_dim(1);
+// -->
+</script>
+projection_x_coordinate:<input type="text" name="dods_cloud_base_height_4p5_oktas_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_cloud_base_height_4p5_oktas.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="cloud_base_height_4p5_oktas_attr" rows=5 cols=70>
+_FillValue: NaN
+units: m
+long_name: cloud_base_height_4p5_oktas
+grid_mapping: lambert_azimuthal_equal_area
+coordinates: forecast_period forecast_reference_time
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_time = new dods_var("time", "dods_time", 1);
+DODS_URL.add_dods_var(dods_time);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_time"
+onclick="dods_time.handle_projection_change(get_dods_time)">
+<font size="+1">time</font>: Array of 32 bit Integers [time = 0..10]
+</b><br>
+
+time:<input type="text" name="dods_time_0" size=8 onfocus="describe_index()" onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_time.add_dim(11);
+// -->
+</script>
+<br>
+
+<textarea name="time_attr" rows=5 cols=70>
+axis: T
+standard_name: time
+units: seconds since 1970-01-01 00:00:00
+calendar: gregorian
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_forecast_period = new dods_var("forecast_period", "dods_forecast_period", 1);
+DODS_URL.add_dods_var(dods_forecast_period);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_forecast_period"
+onclick="dods_forecast_period.handle_projection_change(get_dods_forecast_period)">
+<font size="+1">forecast_period</font>: Array of 32 bit Integers [time = 0..10]
+</b><br>
+
+time:<input type="text" name="dods_forecast_period_0" size=8 onfocus="describe_index()" onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_forecast_period.add_dim(11);
+// -->
+</script>
+<br>
+
+<textarea name="forecast_period_attr" rows=5 cols=70>
+standard_name: forecast_period
+units: seconds
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+</table></form>
+
+<hr>
+
+<address>
+<p>For questions or comments about this dataset, contact the administrator of this server [Puma Squad] at: <a href='mailto:TISDataServices-PumaSquad@metoffice.gov.uk'>TISDataServices-PumaSquad@metoffice.gov.uk</a></p>
+<p>For questions or comments about OPeNDAP, email OPeNDAP support at: <a href='mailto:support@opendap.org'>support@opendap.org</a></p>
+</address></body></html>
+<hr>
+<h2>DDS:</h2>
+<pre>
+Dataset {
+    Int32 lambert_azimuthal_equal_area;
+    Float32 projection_y_coordinate[projection_y_coordinate = 970];
+    Float32 projection_y_coordinate_bnds[projection_y_coordinate = 970][bnds = 2];
+    Float32 projection_x_coordinate[projection_x_coordinate = 1042];
+    Float32 projection_x_coordinate_bnds[projection_x_coordinate = 1042][bnds = 2];
+    Int32 forecast_reference_time;
+    Grid {
+     ARRAY:
+        Float32 cloud_base_height_4p5_oktas[time = 11][projection_y_coordinate = 970][projection_x_coordinate = 1042];
+     MAPS:
+        Int32 time[time = 11];
+        Float32 projection_y_coordinate[projection_y_coordinate = 970];
+        Float32 projection_x_coordinate[projection_x_coordinate = 1042];
+    } cloud_base_height_4p5_oktas;
+    Int32 time[time = 11];
+    Int32 forecast_period[time = 11];
+} aggregation/ukvx_standard_v1_short_2018-02-16_0900/cloud_base_height_4p5_oktas_879f4cd5-feef-4d67-a789-0af440c631e7.ncml;
+</pre>
+<hr>
